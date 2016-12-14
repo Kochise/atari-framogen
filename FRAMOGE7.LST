@@ -1,0 +1,1100 @@
+' /// Mocha's FRActal MOuntain GENerator ///
+' /// Original Version by Mega1 - 1992
+' /// BigScreen Version by KOSS - 1999/2001
+' /// Version 7 : Optimized & Maximized Version by KOSS
+'
+ON BREAK GOSUB error
+ON ERROR GOSUB error
+'
+' sens=(0/180)*PI
+' hauteur=(0/180)*PI
+'
+max_dim%=9
+max_screen%=0
+max_calc%=0
+max_disp%=0
+'
+dimax%=2^max_dim%
+'
+DIM hmont%(dimax%,dimax%)               ! Pass 1
+DIM xmont%(dimax%,dimax%)               ! Pass 2
+DIM x3d%(3),y3d%(3),z3d%(3),xaff%(3),yaff%(3)
+'
+' Temporary Height Field (Pass 1)
+h_level%=256                            ! Central Value
+h_chaos%=128                            ! Range
+'
+' Final Height Field (Pass 2)
+x_level%=-36                            ! Central Value
+x_chaos%=384                            ! Range
+'
+hc%=0                                   ! Color to Display
+hf%=1                                   ! HeightField to Display
+sc%=1                                   ! Change ScreenColor
+rt%=0
+'
+stab%=20                                ! PrintInfo Tab (Time & Date)
+'
+title$="/// Mocha's FRActal MOuntain GENerator - Version 7 - KOSS 1999-2001 ///"
+'
+main
+'
+' *** WorkROUTINES *************************************************************
+'
+> PROCEDURE main
+  ' OK : 06/28/12/01
+  '
+  hackrez                               ! Get ScreenRez
+  devia%=2^max_screen%                  ! MaxHeight to Divide @ each Iter
+  '
+  DO
+    '
+    CLS
+    '
+    VSETCOLOR 0,&H111                   ! VERY DARK GRAY
+    IF sc%=0 THEN
+      VSETCOLOR 1,&H162                 ! GREEN
+    ELSE
+      VSETCOLOR 1,&H168                 ! AMBER
+    ENDIF
+    '
+    PRINT title$
+    PRINT
+    PRINT "h_level% = ";h_level%;TAB(stab%);"x_level% = ";x_level%
+    PRINT "h_chaos% = ";h_chaos%;TAB(stab%);"x_chaos% = ";x_chaos%
+    PRINT
+    PRINT "dimax% = ";dimax%;TAB(stab%);"devia% = ";devia%
+    PRINT "max_calc% = ";max_calc%;TAB(stab%);"max_disp% = ";max_disp%
+    PRINT
+    PRINT "screen_w% = ";screen_w%;TAB(stab%);"screen_h% = ";screen_h%
+    PRINT
+    PRINT "hf% = ";hf%;
+    IF hf%=0 THEN
+      PRINT " : Variation Field"
+    ELSE
+      PRINT " : Height Field"
+    ENDIF
+    PRINT "hc% = ";hc%;
+    IF hc%=0 THEN
+      PRINT " : Height Color"
+    ELSE
+      PRINT " : Variation Color"
+    ENDIF
+    PRINT
+    PRINT "rt% = ";rt%;
+    IF rt%=0 THEN
+      PRINT " : Ground View"
+    ELSE
+      PRINT " : Space View"
+    ENDIF
+    PRINT
+    PRINT "Action : -0- QUIT"
+    PRINT "         -1- Change parameters"
+    PRINT "         -2- Generate Landscape"
+    PRINT "         -3- Enhance  Lanscape"
+    PRINT "         -4- Display MAP"
+    PRINT "         -5- Display 3D"
+    PRINT "         -6- Variation Color <-> Height Color"
+    PRINT "         -7- Variation Field <-> Height Field"
+    PRINT "         -8- Texte VERT      <-> AMBRE"
+    PRINT "         -9- Ground View     <-> Space View"
+    PRINT
+    '
+    REPEAT
+      INPUT "=> ",choix%
+    UNTIL choix%>=0 AND choix%<=9
+    '
+    SELECT choix%
+    CASE 0
+      EDIT                              ! Sort du Programme
+    CASE 1
+      chaoslevel                        ! D‚finition des Niveaux de Chaos
+    CASE 2
+      zivacalcul                        ! Calcul de la Montagne Fractale
+    CASE 3
+      changecalc
+    CASE 4
+      sethc
+      affcarte(secteur%,max_disp%,hc%,hf%)  ! Affichage en Carte Topologique
+    CASE 5
+      sethc
+      aff3d(secteur%,max_disp%,hc%,hf%)     ! Affichage en 3D
+    CASE 6
+      hc%=FN change(hc%)                ! Color to Display
+    CASE 7
+      hf%=FN change(hf%)                ! Change HeightField to Display
+    CASE 8
+      sc%=FN change(sc%)                ! Change Text Color
+    CASE 9
+      rt%=FN change(rt%)                ! Change 3D View Point
+    ENDSELECT
+    '
+  LOOP
+  END
+RETURN
+> PROCEDURE hackrez
+  ' OK : 06/23/06/00
+  '
+  ' Get ScreenRez
+  LOCAL asm_rout$,asm_rout%
+  asm_rout$=MKL$(&HA0004E75)            ! dc.w $A000 + RTS
+  asm_rout%=VARPTR(asm_rout$)
+  linea%=C:asm_rout%()
+  screen_w%=DPEEK(linea%-12)
+  screen_h%=DPEEK(linea%-4)
+  '
+  FOR i%=max_dim%+1 DOWNTO 0
+    IF (2^i%)>screen_h%
+      max_screen%=i%-1
+    ENDIF
+  NEXT i%
+RETURN
+> PROCEDURE chaoslevel
+  ' OK : 03/27/06/00
+  '
+  ' Temporary Height Field (Pass 1)
+  INPUT "h_level% = ",h_level%
+  INPUT "h_chaos% = ",h_chaos%
+  '
+  ' Final Height Field (Pass 2)
+  INPUT "x_level% = ",x_level%
+  INPUT "x_chaos% = ",x_chaos%
+  '
+  ' Deviation Level
+  INPUT "devia% = ",devia%
+RETURN
+> PROCEDURE zivacalcul
+  ' OK : 01/13/02/00
+  '
+  max_sect%=max_screen%-1
+  '
+  ' Select the number of Sectors to Compute
+  ' More Sectors mean less Zoom (Satellite's Photo)
+  ' Less Sectors mean more Zoom (Spot's Photo)
+  '
+  '   0 1 2
+  '  +--+--+- and each square is +--+--+ at start (prec%=1)
+  ' 0|  |  |                     |  |  |
+  '  +--+--+-                    +--+--+
+  ' 1|  |  |                     |  |  |
+  '  +--+--+-                    +--+--+
+  ' 2|  |  |
+  '
+  PRINT
+  REPEAT
+    PRINT "Nombre de secteurs 2^(0-";max_sect%;") : "
+    INPUT "Sect = ",secteur%
+  UNTIL secteur%>=0 AND secteur%<=max_sect%
+  max_prec%=max_screen%-secteur%
+  '
+  ' Each Sectors will be cutted more and more...
+  ' Each time, the Sector will be more precize !
+  '
+  ' prec%=1 is +--+--+, prec%=2 is +--+--+--+--+, and so on...
+  '            |  |  |             |  |  |  |  |
+  '            +--+--+             +--+--+--+--+
+  '            |  |  |             |  |  |  |  |
+  '            +--+--+             +--+--+--+--+
+  '                                |  |  |  |  |
+  '                                +--+--+--+--+
+  '                                |  |  |  |  |
+  '                                +--+--+--+--+
+  '
+  PRINT
+  REPEAT
+    PRINT "Pr‚cision secteur (1-";max_prec%;") : "
+    INPUT "Prec = ",max_calc%
+  UNTIL max_calc%>=1 AND max_calc%<=max_prec%
+  max_disp%=max_calc%
+  '
+  neufpremiers(secteur%)
+  calcul(secteur%,1,max_calc%)
+RETURN
+> PROCEDURE changecalc
+  ' OK : 06/28/12/01
+  '
+  IF max_calc%=0
+    zivacalcul
+  ENDIF
+  PRINT
+  REPEAT
+    PRINT "Pr‚cision ACTUELLE : ";max_calc%
+    PRINT "Pr‚cision secteur (1-";max_prec%;") : "
+    INPUT "Prec = ",prec%
+  UNTIL prec%>=1 AND prec%<=max_prec%
+  IF prec%>max_calc%
+    calcul(secteur%,max_calc%,prec%)
+    max_calc%=prec%
+  ENDIF
+  max_disp%=prec%
+RETURN
+> PROCEDURE neufpremiers(sect%)
+  ' OK : 05/22/06/00
+  '
+  ' Since Version 4, the Height Field Sector Size is FIXED !
+  ' So that, we have to compute a little there, because
+  ' there will be NO MORE Shift'n Copy Routine left...
+  '
+  ' With max_dim%=9, the Height Field Sector Size is (2^9)+1=513
+  ' If sect%=0, the Height Field is :
+  '
+  ' 0,0   +------------------------- 512 -------------------------+ 512,0
+  '       |                                                       |
+  '       ~                                                       ~
+  '      512                                                     512
+  '       ~                                                       ~
+  '       |                                                       |
+  ' 0,512 +------------------------- 512 -------------------------+ 512,512
+  '
+  ' So the step is : 0 TO dimax% STEP 2^(max_dim%-sect%) = 512
+  '
+  ' If sect%=1, the Height Field is :
+  '
+  ' 0,0   +----------- 256 -----------+----------- 256 -----------+ 512,0
+  '       |                           |256,0                      |
+  '       ~                           ~                           ~
+  '      256                         256                         256
+  '       ~                           ~                           ~
+  '       |                           |                           |
+  ' 0,256 +---------------------------+---------------------------+ 512,256
+  '       |                           |256,256                    |
+  '       ~                           ~                           ~
+  '      256                         256                         256
+  '       ~                           ~                           ~
+  '       |                           |                           |
+  ' 0,512 +----------- 256 -----------+----------- 256 -----------+ 512,512
+  '
+  ' So the step is : 0 TO dimax% STEP 2^(max_dim%-sect%) = 256
+  '
+  ' And so the Story goes...
+  '
+  '          +- \
+  '          |  |
+  '          |  |
+  '          |  |
+  ' _level% -+   > 2*_chaos%
+  '          |  |
+  '          |  |
+  '          |  |
+  '          +- /
+  '
+  ' That's to say : alt%=(2*_chaos%*RND)-_chaos%+_level%
+  '
+  tempoh_rnd%=2*h_chaos%
+  tempoh_var%=0-h_chaos%+h_level%
+  tempox_rnd%=2*x_chaos%
+  tempox_var%=0-x_chaos%+x_level%
+  '
+  FOR j%=0 TO dimax% STEP 2^(max_dim%-sect%)
+    FOR i%=0 TO dimax% STEP 2^(max_dim%-sect%)
+      hmont%(i%,j%)=(tempoh_rnd%*RND)+tempoh_var%
+      xmont%(i%,j%)=(tempox_rnd%*RND)+tempox_var%
+    NEXT i%
+  NEXT j%
+RETURN
+> PROCEDURE calcul(sect%,from%,depth%)
+  ' OK : 06/28/12/01
+  '
+  LOCAL i%,j%,isubdis%,iadddis%,jsubdis%,jadddis%
+  LOCAL amp%,n%,i%,j%
+  '
+  iwork%=0
+  twork%=((2^(sect%+depth%)+1)^2)-((2^(sect%+(from%-1))+1)^2)
+  '
+  CLS
+  PRINT "Computing of ";twork%*2;" plot in progress..."
+  '
+  start%=TIMER
+  '
+  FOR iter%=from% TO depth%
+    '
+    ' Here depth%=prec% !
+    '
+    ' With max_dim%=9, the Height Field Sector Size is (2^9)+1=513
+    ' If sect%=0, the Height Field is :
+    '
+    ' 0,0   +------------------------- 512 -------------------------+ 512,0
+    '       |                                                       |
+    '       ~                                                       ~
+    '      512                                                     512
+    '       ~                                                       ~
+    '       |                                                       |
+    ' 0,512 +------------------------- 512 -------------------------+ 512,512
+    '
+    ' If prec%=1, the Height Field become :
+    '
+    ' 0,0   +----------- 256 -----------+----------- 256 -----------+ 512,0
+    '       |                           |256,0                      |
+    '       ~                           ~                           ~
+    '      256                         256                         256
+    '       ~                           ~                           ~
+    '       |                           |                           |
+    ' 0,256 +---------------------------+---------------------------+ 512,256
+    '       |                           |256,256                    |
+    '       ~                           ~                           ~
+    '      256                         256                         256
+    '       ~                           ~                           ~
+    '       |                           |                           |
+    ' 0,512 +----------- 256 -----------+----------- 256 -----------+ 512,512
+    '                                    256,512
+    '
+    ' If prec%=2, the Height Field become :
+    '
+    ' 0,0   +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,0
+    '       |             |128,0        |256,0        |384,0        |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,128 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,128
+    '       |             |128,128      |256,128      |384,128      |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,256 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,256
+    '       |             |128,256      |256,256      |384,256      |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,384 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,384
+    '       |             |128,384      |256,384      |384,384      |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,512 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,512
+    '                      128,512       256,512       384,512
+    '
+    ' ----> BUT !!! But, but, but, don't forget that - IF -... <----
+    ' If sect%=1, the Height Field is :
+    '
+    ' 0,0   +----------- 256 -----------+----------- 256 -----------+ 512,0
+    '       |                           |256,0                      |
+    '       ~                           ~                           ~
+    '      256                         256                         256
+    '       ~                           ~                           ~
+    '       |                           |                           |
+    ' 0,256 +---------------------------+---------------------------+ 512,256
+    '       |                           |256,256                    |
+    '       ~                           ~                           ~
+    '      256                         256                         256
+    '       ~                           ~                           ~
+    '       |                           |                           |
+    ' 0,512 +----------- 256 -----------+----------- 256 -----------+ 512,512
+    '
+    ' And IF prec%=1, the Height Field become :
+    '
+    ' 0,0   +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,0
+    '       |             |128,0        |256,0        |384,0        |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,128 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,128
+    '       |             |128,128      |256,128      |384,128      |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,256 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,256
+    '       |             |128,256      |256,256      |384,256      |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,384 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,384
+    '       |             |128,384      |256,384      |384,384      |
+    '      128           128           128           128           128
+    '       |             |             |             |             |
+    ' 0,512 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,512
+    '                      128,512       256,512       384,512
+    '
+    ' And so the Story goes...
+    '
+    ' So that, disbase%=2^(max_dim%-sect%-iter%)
+    '
+    disbase%=2^(max_dim%-sect%-iter%)
+    subiter%=2^(iter%-1)
+    amp%=devia%/subiter%
+    '
+    ' Into the Height Field
+    '
+    FOR j%=disbase% TO (dimax%-disbase%) STEP (2*disbase%)
+      FOR i%=disbase% TO (dimax%-disbase%) STEP (2*disbase%)
+        '
+        ' Imagine a Matrix of, hum... 5*5 points, that's to say :
+        '
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        '
+        ' Now, we'll calculate all the interlaced points in EACH line :
+        '
+        ' +---*---+---*---+-------+-------+
+        ' |   |   |   |   |       |       |
+        ' *---*---*---*-> |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        '
+        ' Then, until...
+        '
+        ' +---*---+---*---+---*---+---*---+
+        ' |   |   |   |   |   |   |   |   |
+        ' *---*---*---*---*---*---*---*---*
+        ' |   |   |   |   |   |   |   |   |
+        ' +---*---+---*---+---*---+---*---+
+        ' |   |   |   |   |   |   |   |   |
+        ' *---*---*---*---*---*---*---*---*
+        ' |   |   |   |   |       |       |
+        ' +---*---+---*---+-------+-------+
+        ' |   |   |   |   |       |       |
+        ' *---*---*---*-> |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        '
+        ' ...this states :
+        '
+        ' +---*---+---*---+---*---+---*---+
+        ' |   |   |   |   |   |   |   |   |
+        ' *---*---*---*---*---*---*---*---*
+        ' |   |   |   |   |   |   |   |   |
+        ' +---*---+---*---+---*---+---*---+
+        ' |   |   |   |   |   |   |   |   |
+        ' *---*---*---*---*---*---*---*---*
+        ' |   |   |   |   |   |   |   |   |
+        ' +---*---+---*---+---*---+---*---+
+        ' |   |   |   |   |   |   |   |   |
+        ' *---*---*---*---*---*---*---*---*
+        ' |   |   |   |   |   |   |   |   |
+        ' +---*---+---*---+---*---+---*---+
+        ' |   |   |   |   |   |   |   |   |
+        ' *---*---*---*---*---*---*---*---*
+        ' |       |       |       |       |
+        ' +-------+-------+-------+-------+
+        '
+        ' Let's START :
+        '
+        ' First of ALL, let's define the Matrix on which we'R about to work :
+        '
+        ' i%-disbase%, +----------------*----------------+-- i%+disbase%,
+        ' j%-disbase%  |                |i%,j%-disbase%  |   j%-disbase%
+        '  -> P-1-1    |                | -> P+0-1       |    -> P+1-1
+        '              ~                ~                ~
+        '
+        '              ~                ~                ~
+        '              |                |                |
+        '              |                |                |
+        ' i%-disbase%, *----------------*---------------(*)- i%+disbase%,
+        ' j%           |                |i%,j%           |   j%
+        '  -> P-1+0    |                |Central Point   |    -> P+1+0
+        '              ~                ~ -> P+0+0       ~
+        '
+        '              ~                ~                ~
+        '              |                |                |
+        '              |                |                |
+        ' i%-disbase%, +---------------(*)---------------+-- i%+disbase%,
+        ' j%+disbase%  |                |i%,j%+disbase%  |   j%+disbase%
+        '  -> P-1+1                       -> P+0+1            -> P+1+1
+        '
+        ' There the following points are known :
+        '  -> P-1-1 \
+        '  -> P+1-1  \ They have been calculated in PROCEDURE neufpremiers
+        '  -> P-1+1  /
+        '  -> P+1+1 /
+        '
+        ' We have NOW to calculate the following points :
+        '  -> P+0-1
+        '  -> P-1+0
+        '  -> P+0+0
+        '
+        ' The following points will be calculated at the NEXT inter%
+        '  -> P+1+0, then also known as -> P-1+0
+        '  -> P+0+1, then also known as -> P+0-1
+        '
+        isubdis%=i%-disbase%
+        iadddis%=i%+disbase%
+        jsubdis%=j%-disbase%
+        jadddis%=j%+disbase%
+        '
+        ' And now, it's time to calculate -> P-1+0
+        '  -> P-1+0 = (P-1-1 + P-1+1)/2 + random_height%
+        '
+        buffer1%=(hmont%(isubdis%,jsubdis%)+hmont%(isubdis%,jadddis%))/2+INT((RND-0.5)*amp%)
+        hmont%(isubdis%,j%)=buffer1%
+        '
+        ' There, it's high time to calculate for the Final Height Field :
+        '  -> P-1+0 = (P-1-1 + P-1+1)/2 + fractal_height%
+        '
+        buffer2%=ABS(buffer1%)/subiter%
+        xmont%(isubdis%,j%)=(xmont%(isubdis%,jsubdis%)+xmont%(isubdis%,jadddis%))/2+INT((RND-0.5)*buffer2%)
+        '
+        '  -> P+0-1 = (P-1-1 + P+1-1)/2 + random_height%
+        '
+        buffer1%=(hmont%(isubdis%,jsubdis%)+hmont%(iadddis%,jsubdis%))/2+INT((RND-0.5)*amp%)
+        hmont%(i%,jsubdis%)=buffer1%
+        '
+        '  -> P+0-1 = (P-1-1 + P+1-1)/2 + fractal_height%
+        '
+        buffer2%=ABS(buffer1%)/subiter%
+        xmont%(i%,jsubdis%)=(xmont%(isubdis%,jsubdis%)+xmont%(iadddis%,jsubdis%))/2+INT((RND-0.5)*buffer2%)
+        '
+        '  -> P+0+0 = (P-1-1 + P-1+1 + P+1-1 + P+1+1)/4 + random_height%
+        '
+        buffer1%=(hmont%(isubdis%,jsubdis%)+hmont%(isubdis%,jadddis%)+hmont%(iadddis%,jsubdis%)+hmont%(iadddis%,jadddis%))/4+INT((RND-0.5)*amp%)
+        hmont%(i%,j%)=buffer1%
+        '
+        '  -> P+0+0 = (P-1-1 + P-1+1 + P+1-1 + P+1+1)/4 + fractal_height%
+        '
+        buffer2%=ABS(buffer1%)/subiter%
+        xmont%(i%,j%)=(xmont%(isubdis%,jsubdis%)+xmont%(isubdis%,jadddis%)+xmont%(iadddis%,jsubdis%)+xmont%(iadddis%,jadddis%))/4+INT((RND-0.5)*buffer2%)
+        '
+        iwork%=iwork%+3
+        '
+        IF j%=dimax%-disbase%
+          '
+          ' End of Rows
+          '
+          ' We have now, from the previous DOUBLE LOOP :
+          '
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |       |       |       |       |
+          ' +-------+-------+-------+-------+
+          '
+          ' OK, now we'R there, @ the end of a Row :
+          '
+          ' End of a Row :
+          '
+          '       |                      |                      |
+          '       |                      |                      |
+          '  -----+----------------------*----------------------+-----
+          '        i%-disbase%,dimax%     i%,dimax%              i%+disbase%,dimax%
+          '         -> P-1                 -> P+0                 -> P+1
+          '
+          ' There, the following points are known :
+          '  -> P-1 \ They have been calculated in PROCEDURE neufpremiers
+          '  -> P+1 /
+          '
+          ' We have now to calculate the following point :
+          '  -> P+0
+          '
+          ' And now, it's time to calculate -> P+0
+          '  -> P+0 = (P-1 + P+1)/2 + random_height%
+          '
+          ' What we have to do now, is to end the LAST ROW and the LAST LINE
+          '
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |       |       |
+          ' +---*---+---*---+-------+-------+
+          '             ->
+          '
+          ' Then, we'll finaly get :
+          '
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          ' |   |   |   |   |   |   |   |   |
+          ' *---*---*---*---*---*---*---*---*
+          ' |   |   |   |   |   |   |   |   |
+          ' +---*---+---*---+---*---+---*---+
+          '
+          ' @ the next inter%, we'll get :
+          '
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          ' *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+          ' +-*-+-*-+-*-+-*-+-*-+-*-+-*-+-*-+
+          '
+          buffer1%=(hmont%(isubdis%,dimax%)+hmont%(iadddis%,dimax%))/2+INT((RND-0.5)*amp%)
+          hmont%(i%,dimax%)=buffer1%
+          '
+          buffer2%=ABS(buffer1%)/subiter%
+          xmont%(i%,dimax%)=(xmont%(isubdis%,dimax%)+xmont%(iadddis%,dimax%))/2+INT((RND-0.5)*buffer2%)
+          '
+          INC iwork%
+          '
+        ENDIF
+        '
+      NEXT i%
+      '
+      ' OK, there, let's END the LINE
+      '
+      ' We've something like this...
+      '
+      ' +---*---+---*---+---*---+---*---+
+      ' |   |   |   |   |   |   |   |   |
+      ' *---*---*---*---*---*---*---*   |
+      ' |       |       |       |       |
+      ' +-------+-------+-------+-------+
+      ' |       |       |       |       |
+      '
+      ' ...and we shouda get something like this :
+      '
+      ' +---*---+---*---+---*---+---*---+
+      ' |   |   |   |   |   |   |   |   |
+      ' *---*---*---*---*---*---*---*---*
+      ' |       |       |       |       |
+      ' +-------+-------+-------+-------+
+      ' |       |       |       |       |
+      '
+      ' End of a Line :
+      '
+      '       |
+      '  -----+ dimax%,i%-disbase%
+      '       |  -> P-1
+      '       |
+      '       |
+      '       |
+      '  -----* dimax%,i%
+      '       |  -> P+0
+      '       |
+      '       |
+      '       |
+      '  -----+ dimax%,i%+disbase%
+      '       |  -> P+1
+      '
+      ' There, the following points are known :
+      '  -> P-1 \ They have been calculated in PROCEDURE neufpremiers
+      '  -> P+1 /
+      '
+      ' We have now to calculate the following point :
+      '  -> P+0
+      '
+      ' And now, it's time to calculate -> P+0
+      '  -> P+0 = (P-1 + P+1)/2 + random_height%
+      '
+      buffer1%=(hmont%(dimax%,jsubdis%)+hmont%(dimax%,jadddis%))/2+INT((RND-0.5)*amp%)
+      hmont%(dimax%,j%)=buffer1%
+      '
+      buffer2%=ABS(buffer1%)/subiter%
+      xmont%(dimax%,j%)=(xmont%(dimax%,jsubdis%)+xmont%(dimax%,jadddis%))/2+INT((RND-0.5)*buffer2%)
+      '
+      INC iwork%
+      '
+      GOSUB worktimer
+    NEXT j%
+    '
+  NEXT iter%
+  '
+  PRINT
+  PRINT "That's FINI (";INT(twork%/(current%/(2*200)));" points/seconde) !!!"
+  '
+  waitkey
+RETURN
+> PROCEDURE worktimer
+  ' OK : 01/13/02/00
+  '
+  ' This WorkTimer let you know some infos about the current calculation
+  PRINT AT(2,3);"Start   : ";INT((start%-start%)/200);" seconde "
+  current%=TIMER-start%
+  PRINT AT(2,4);"Current : ";INT(current%/200);" secondes "
+  PRINT AT(2,5);"Work    : ";INT((iwork%/twork%)*100);" %"
+  left%=((current%*twork%)/iwork%)-current%
+  PRINT AT(2,6);"Left    : ";INT(left%/200);" secondes "
+  end%=current%+left%
+  PRINT AT(2,7);"End     : ";INT((end%)/200);" secondes "
+RETURN
+> PROCEDURE affcarte(sect%,depth%,type%,heightf%)
+  ' OK : 06/28/12/01
+  '
+  ' IF sect%=1 AND prec%=1, the Height Field is :
+  '
+  ' 0,0   +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,0
+  '       |             |128,0        |256,0        |384,0        |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,128 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,128
+  '       |             |128,128      |256,128      |384,128      |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,256 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,256
+  '       |             |128,256      |256,256      |384,256      |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,384 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,384
+  '       |             |128,384      |256,384      |384,384      |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,512 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,512
+  '                      128,512       256,512       384,512
+  '
+  ' So we have to pick up the Height every :
+  ' n%=2^(max_dim%-sect%-depth%)
+  '
+  LOCAL n%,t%,i%,j%
+  '
+  affratio%=2^(max_dim%-max_screen%)
+  n%=2^(max_dim%-sect%-depth%)
+  ratio%=secteur%+1
+  scrw%=(screen_w%-(dimax%/affratio%))/2
+  scrh%=(screen_h%-(dimax%/affratio%))/2
+  '
+  CLS
+  TEXT (screen_w%-208)/2,10,220,"FRActal MOuntain GENerator"
+  '
+  FOR j%=0 TO (dimax%-n%) STEP n%
+    FOR i%=0 TO (dimax%-n%) STEP n%
+      '
+      grabhfield(heightf%)
+      '
+      IF type%=1
+        c%=FN coul2(y3d%(0),y3d%(1),y3d%(2),y3d%(3),n%)
+      ELSE
+        IF heightf%=0
+          c%=FN coul1(hmont%(i%,j%))
+        ELSE
+          c%=FN coul1(xmont%(i%,j%))
+        ENDIF
+      ENDIF
+      '
+      xaff%(0)=scrw%+i%/affratio%
+      yaff%(0)=scrh%+j%/affratio%
+      xaff%(1)=scrw%+(i%+n%)/affratio%-1
+      yaff%(1)=scrh%+j%/affratio%
+      xaff%(2)=scrw%+(i%+n%)/affratio%-1
+      yaff%(2)=scrh%+(j%+n%)/affratio%-1
+      xaff%(3)=scrw%+i%/affratio%
+      yaff%(3)=scrh%+(j%+n%)/affratio%-1
+      '
+      DEFFILL c%
+      POLYFILL 4,xaff%(),yaff%()
+    NEXT i%
+  NEXT j%
+  '
+  waitkey
+RETURN
+> PROCEDURE aff3d(sect%,depth%,type%,heightf%)
+  ' OK : 06/28/12/01
+  '
+  ' IF sect%=1 AND prec%=1, the Height Field is :
+  '
+  ' 0,0   +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,0
+  '       |             |128,0        |256,0        |384,0        |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,128 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,128
+  '       |             |128,128      |256,128      |384,128      |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,256 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,256
+  '       |             |128,256      |256,256      |384,256      |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,384 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,384
+  '       |             |128,384      |256,384      |384,384      |
+  '      128           128           128           128           128
+  '       |             |             |             |             |
+  ' 0,512 +---- 128 ----+---- 128 ----+---- 128 ----+---- 128 ----+ 512,512
+  '                      128,512       256,512       384,512
+  '
+  ' So we have to pick up the Height every :
+  ' n%=2^(max_dim%-sect%-depth%)
+  '
+  LOCAL d%,t%,i%,j%,n%,p%,c%,ok%,x%,j%
+  '
+  t%=2^(sect%+depth%)
+  d%=screen_w%
+  n%=2^(max_dim%-sect%-depth%)
+  '
+  IF rt%=0
+    ratio%=1
+    sad1%=2^sect%
+    sad2%=2^(sect%+1)
+  ELSE
+    ratio%=(sect%+1)*2
+    sad1%=1
+    sad2%=2
+  ENDIF
+  '
+  CLS
+  '
+  IF rt%=0 THEN
+    PRINT AT(2+2*stab%,3);"Ground View"
+  ELSE
+    PRINT AT(2+2*stab%,3);"Space View"
+  ENDIF
+  '
+  swat%=0
+  infodate
+  '
+  FOR j%=0 TO (dimax%-n%) STEP n%
+    FOR i%=0 TO (dimax%-n%) STEP n%
+      '
+      grabhfield(heightf%)
+      '
+      IF type%=1
+        c%=FN coul2(y3d%(0),y3d%(1),y3d%(2),y3d%(3),n%)
+      ELSE
+        IF heightf%=0
+          c%=FN coul1(hmont%(i%,j%))
+        ELSE
+          c%=FN coul1(xmont%(i%,j%))
+        ENDIF
+      ENDIF
+      '
+      x%=i%/n%
+      y%=j%/n%
+      '
+      x3d%(0)=(-sad1%*screen_w%)+(sad2%*screen_w%)*x%/t%
+      x3d%(1)=(-sad1%*screen_w%)+(sad2%*screen_w%)*(x%+1)/t%
+      x3d%(2)=x3d%(1)
+      x3d%(3)=x3d%(0)
+      '
+      grab3dfield(heightf%)
+      '
+      z3d%(0)=(sad2%*screen_w%)-(sad2%*screen_w%)*y%/t%
+      z3d%(1)=z3d%(0)
+      z3d%(2)=(sad2%*screen_w%)-(sad2%*screen_w%)*(y%+1)/t%
+      z3d%(3)=z3d%(2)
+      '
+      ok%=4
+      FOR p%=0 TO 3
+        xaff%(p%)=x3d%(p%)*d%/(d%+z3d%(p%))
+        yaff%(p%)=y3d%(p%)*d%/(d%+z3d%(p%))
+        IF ABS(xaff%(p%))>(screen_w%/2) OR ABS(yaff%(p%))>(screen_w%/2)
+          DEC ok%
+        ENDIF
+      NEXT p%
+      '
+      IF ok%>0
+        FOR p%=0 TO 3
+          ADD xaff%(p%),screen_w%/2
+          ADD yaff%(p%),screen_h%/2
+        NEXT p%
+        '
+        DEFFILL c%
+        POLYFILL 4,xaff%(),yaff%()
+      ENDIF
+      '
+    NEXT i%
+    '
+    PRINT AT(2+stab%,4);"Time = ";TIME$
+    PRINT AT(2+2*stab%,5);"Done = ";INT((j%/(dimax%-n%))*100);"%"
+    '
+  NEXT j%
+  '
+  swat%=1
+  infodate
+  '
+  waitkey
+RETURN
+> PROCEDURE infodate
+  ' OK : 06/10/11/2000
+  '
+  ' Print the Time & Date of Start & End of Display
+  PRINT AT(1,1);title$
+  '
+  IF swat%=0 THEN
+    PRINT AT(2,3);"Start @"
+  ELSE
+    PRINT AT(2+stab%,3);"End @"
+  ENDIF
+  '
+  PRINT AT(2+(stab%*swat%),4);"Time = ";TIME$
+  PRINT AT(2+(stab%*swat%),5);"Date = ";DATE$
+RETURN
+> PROCEDURE grabhfield(ghf%)
+  ' OK : 06/23/06/00
+  '
+  IF ghf%=0 THEN
+    y3d%(0)=hmont%(i%,j%)
+    y3d%(1)=hmont%(i%+n%,j%)
+    y3d%(2)=hmont%(i%+n%,j%+n%)
+    y3d%(3)=hmont%(i%,j%+n%)
+  ELSE
+    y3d%(0)=xmont%(i%,j%)
+    y3d%(1)=xmont%(i%+n%,j%)
+    y3d%(2)=xmont%(i%+n%,j%+n%)
+    y3d%(3)=xmont%(i%,j%+n%)
+  ENDIF
+RETURN
+> PROCEDURE grab3dfield(ghf%)
+  ' OK : 06/23/06/00
+  '
+  IF ghf%=0 THEN
+    y3d%(0)=(screen_h%/2)+(hmont%(i%,j%)/ratio%)*(hmont%(i%,j%)/ratio%>0)/2
+    y3d%(1)=(screen_h%/2)+(hmont%(i%+n%,j%)/ratio%)*(hmont%(i%+n%,j%)/ratio%>0)/2
+    y3d%(2)=(screen_h%/2)+(hmont%(i%+n%,j%+n%)/ratio%)*(hmont%(i%+n%,j%+n%)/ratio%>0)/2
+    y3d%(3)=(screen_h%/2)+(hmont%(i%,j%+n%)/ratio%)*(hmont%(i%,j%+n%)/ratio%>0)/2
+  ELSE
+    y3d%(0)=(screen_h%/2)+(xmont%(i%,j%)/ratio%)*(xmont%(i%,j%)/ratio%>0)/2
+    y3d%(1)=(screen_h%/2)+(xmont%(i%+n%,j%)/ratio%)*(xmont%(i%+n%,j%)/ratio%>0)/2
+    y3d%(2)=(screen_h%/2)+(xmont%(i%+n%,j%+n%)/ratio%)*(xmont%(i%+n%,j%+n%)/ratio%>0)/2
+    y3d%(3)=(screen_h%/2)+(xmont%(i%,j%+n%)/ratio%)*(xmont%(i%,j%+n%)/ratio%>0)/2
+  ENDIF
+RETURN
+> FUNCTION coul1(alt%)
+' OK : 06/28/12/01
+'
+LOCAL coul%,altconv%
+altconv%=(4000/10)/(16-2)
+IF alt%<=0
+  coul%=1
+ELSE
+  coul%=(alt%/altconv%)+2
+  IF coul%>15
+    coul%=15
+  ENDIF
+ENDIF
+RETURN coul%
+ENDFUNC
+> PROCEDURE initcoul1
+' OK : 06/28/12/01
+'
+VSETCOLOR 0,0
+VSETCOLOR 1,&HFA0
+VSETCOLOR 2,&HA2
+VSETCOLOR 3,&HA4
+VSETCOLOR 4,&HA6
+VSETCOLOR 5,&HA8
+VSETCOLOR 6,&H88
+VSETCOLOR 7,&H68
+VSETCOLOR 8,&H48
+VSETCOLOR 9,&H28
+VSETCOLOR 10,&H448
+VSETCOLOR 11,&H668
+VSETCOLOR 12,&H888
+VSETCOLOR 13,&HAAA
+VSETCOLOR 14,&HDDD
+VSETCOLOR 15,&HFFF
+RETURN
+> FUNCTION coul2(h0%,h1%,h2%,h3%,n%)
+' OK : 06/28/12/01
+'
+hh%=(h0%+h1%+h2%+h3%)/4
+nh%=n%*SQR(2)
+'
+LOCAL coul%
+IF h0%<=0
+coul%=1
+ELSE
+coul%=8+(((h0%-hh%)+(h3%-hh%)+(hh%-h2%)+(hh%-h1%))/4)/nh%
+IF coul%<2
+  coul%=2
+ENDIF
+IF coul%>15
+  coul%=15
+ENDIF
+ENDIF
+RETURN coul%
+ENDFUNC
+> PROCEDURE initcoul2
+' OK : 06/28/12/01
+'
+VSETCOLOR 0,0
+VSETCOLOR 1,&H750
+VSETCOLOR 2,&H111
+VSETCOLOR 3,&H222
+VSETCOLOR 4,&H444
+VSETCOLOR 5,&H555
+VSETCOLOR 6,&H666
+VSETCOLOR 7,&H777
+VSETCOLOR 8,&H888
+VSETCOLOR 9,&H999
+VSETCOLOR 10,&HAAA
+VSETCOLOR 11,&HBBB
+VSETCOLOR 12,&HCCC
+VSETCOLOR 13,&HDDD
+VSETCOLOR 14,&HEEE
+VSETCOLOR 15,&HFFF
+RETURN
+> PROCEDURE sethc
+' OK : 06/28/12/01
+'
+' Color to Display
+IF hc%=0 THEN
+initcoul1
+ELSE
+initcoul2
+ENDIF
+RETURN
+> FUNCTION change(var%)
+' OK : 06/28/12/01
+'
+IF var%=0 THEN
+RETURN 1
+ELSE
+RETURN 0
+ENDIF
+ENDFUNC
+> PROCEDURE error
+' OK : 01/13/02/00
+'
+' In case of an Error
+CLS
+PRINT "Erreur..."
+waitkey
+EDIT
+RETURN
+> PROCEDURE waitkey
+PRINT CHR$(7)
+VOID INP(2)
+RETURN
