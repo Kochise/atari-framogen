@@ -2,6 +2,8 @@
 
 Atari program to calculate and display fractal mountains
 
+![framogen](https://github.com/Kochise/framogen/blob/master/PICC.PNG?raw=true)
+
 * Hardware and software needed
 
 You need the following to get this program working :
